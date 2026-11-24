@@ -174,6 +174,38 @@ separately if those records need to be available in SQLite. Before deployment,
 set `APP_DEBUG=false`, generate a unique `APP_KEY`, and use a protected,
 backed-up SQLite file with appropriate filesystem permissions.
 
+## Docker deployment
+
+The Docker image uses PHP 8.2 with Apache and SQLite. It serves Laravel from
+`public/`, applies migrations and seeds RBAC roles/permissions at container
+startup, and listens on the port provided by the hosting platform (8080 by
+default).
+
+Build and run locally:
+
+```powershell
+docker build -t vehicle-management .
+docker run --name vfms -p 8000:8080 -e APP_ENV=production -e APP_DEBUG=false -e APP_KEY="base64:REPLACE_WITH_A_GENERATED_KEY" -e APP_URL=http://localhost:8000 -e DB_DATABASE=/var/lib/vfms/database.sqlite --mount source=vfms-data,target=/var/lib/vfms vehicle-management
+```
+
+Generate a unique key with `php artisan key:generate --show` and replace the
+placeholder before starting the container. Keep the same key across restarts.
+The named Docker volume stores SQLite data outside the image. After startup,
+create the initial administrator interactively:
+
+```powershell
+docker exec -it vfms php artisan rbac:bootstrap-admin
+```
+
+For Render, create a Docker web service and set `APP_ENV=production`,
+`APP_DEBUG=false`, `APP_KEY` (a generated key), and `APP_URL` (the public
+service URL). Attach a persistent disk mounted at `/var/data`, then set
+`DB_DATABASE=/var/data/database.sqlite`. The container runs migrations and
+seeds RBAC on startup; use the Render Shell to run
+`php artisan rbac:bootstrap-admin` once. Without persistent storage, SQLite
+data can be lost when the service is replaced. Use a single running instance
+for this SQLite demonstration deployment.
+
 RBAC tests are run with:
 
 ```powershell
