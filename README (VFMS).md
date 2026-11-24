@@ -184,7 +184,7 @@ default).
 Build and run locally:
 
 ```powershell
-docker build -t vehicle-management .
+docker build --progress=plain -t vehicle-management .
 docker run --name vfms -p 8000:8080 -e APP_ENV=production -e APP_DEBUG=false -e APP_KEY="base64:REPLACE_WITH_A_GENERATED_KEY" -e APP_URL=http://localhost:8000 -e DB_DATABASE=/var/lib/vfms/database.sqlite --mount source=vfms-data,target=/var/lib/vfms vehicle-management
 ```
 

@@ -5,7 +5,7 @@ ENV APACHE_DOCUMENT_ROOT=/var/www/html/public \
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends libonig-dev libsqlite3-dev libxml2-dev \
-    && docker-php-ext-install mbstring pdo_sqlite xml \
+    && docker-php-ext-install dom mbstring pdo_sqlite xml \
     && a2enmod rewrite \
     && sed -ri 's!/var/www/html!/var/www/html/public!g' /etc/apache2/sites-available/000-default.conf \
     && sed -ri 's/Listen 80/Listen ${PORT}/' /etc/apache2/ports.conf \
