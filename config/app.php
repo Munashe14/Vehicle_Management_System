@@ -56,6 +56,8 @@ return [
 
     'asset_url' => env('ASSET_URL', null),
 
+    'initial_admin_setup_key' => env('INITIAL_ADMIN_SETUP_KEY'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

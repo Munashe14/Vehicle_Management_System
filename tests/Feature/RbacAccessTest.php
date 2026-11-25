@@ -29,6 +29,88 @@ class RbacAccessTest extends TestCase
         $this->get('/vehicles')->assertRedirect('/login');
     }
 
+    public function test_web_initial_admin_setup_is_secret_protected_and_one_time()
+    {
+        config(['app.initial_admin_setup_key' => 'secure-bootstrap-code-for-demo']);
+
+        $this->get('/initial-admin')
+            ->assertOk()
+            ->assertSee('Create IT Manager account');
+
+        $this->post('/initial-admin', [
+            'setup_key' => 'incorrect-code',
+            'name' => 'Initial Manager',
+            'email' => 'manager@example.test',
+            'password' => 'Strong-Manager-Password-123',
+            'password_confirmation' => 'Strong-Manager-Password-123',
+        ])->assertSessionHasErrors('setup_key')
+            ->assertSessionMissing('_old_input.setup_key');
+        $this->assertDatabaseMissing('users', ['email' => 'manager@example.test']);
+
+        $this->post('/initial-admin', [
+            'setup_key' => 'secure-bootstrap-code-for-demo',
+            'name' => 'Initial Manager',
+            'email' => 'manager@example.test',
+            'password' => 'Strong-Manager-Password-123',
+            'password_confirmation' => 'Strong-Manager-Password-123',
+        ])->assertRedirect('/login');
+
+        $admin = User::where('email', 'manager@example.test')->firstOrFail();
+        $this->assertTrue($admin->is_active);
+        $this->assertSame('it_manager', $admin->role->name);
+        $this->assertSame('approved', $admin->registration_status);
+        $this->assertDatabaseHas('audit_logs', [
+            'user_id' => $admin->id,
+            'action' => 'user.initial_admin_assigned',
+            'subject_id' => $admin->id,
+        ]);
+
+        $this->get('/initial-admin')->assertNotFound();
+        $this->post('/initial-admin', [
+            'setup_key' => 'secure-bootstrap-code-for-demo',
+            'name' => 'Another Manager',
+            'email' => 'another-manager@example.test',
+            'password' => 'Strong-Manager-Password-123',
+            'password_confirmation' => 'Strong-Manager-Password-123',
+        ])->assertNotFound();
+    }
+
+    public function test_web_initial_admin_setup_is_disabled_without_deployment_secret()
+    {
+        config(['app.initial_admin_setup_key' => null]);
+
+        $this->get('/initial-admin')->assertNotFound();
+        $this->assertDatabaseCount('users', 0);
+    }
+
+    public function test_web_initial_admin_setup_can_promote_an_existing_pending_account()
+    {
+        config(['app.initial_admin_setup_key' => 'secure-bootstrap-code-for-demo']);
+        $pending = User::create([
+            'name' => 'Pending User',
+            'email' => 'manager@example.test',
+            'password' => Hash::make('Old-Manager-Password-123'),
+            'requested_role_id' => Role::where('name', 'driver')->value('id'),
+            'registration_status' => 'pending',
+            'is_active' => false,
+        ]);
+
+        $this->post('/initial-admin', [
+            'setup_key' => 'secure-bootstrap-code-for-demo',
+            'name' => 'Initial Manager',
+            'email' => 'manager@example.test',
+            'password' => 'Strong-Manager-Password-123',
+            'password_confirmation' => 'Strong-Manager-Password-123',
+        ])->assertRedirect('/login');
+
+        $pending->refresh();
+        $this->assertSame('Initial Manager', $pending->name);
+        $this->assertTrue($pending->is_active);
+        $this->assertSame('it_manager', $pending->role->name);
+        $this->assertNull($pending->requested_role_id);
+        $this->assertTrue(Hash::check('Strong-Manager-Password-123', $pending->password));
+    }
+
     public function test_audit_log_displays_readable_actions_and_formatted_details()
     {
         $admin = $this->userWithRole('it_manager');

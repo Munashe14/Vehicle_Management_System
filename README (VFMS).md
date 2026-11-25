@@ -119,7 +119,8 @@ account as the first IT Manager, run
 `php artisan rbac:bootstrap-admin user@example.com` and confirm the prompt.
 This can also activate an already registered, inactive request when there is no
 active IT Manager. Only the first active IT Manager can be bootstrapped this
-way; subsequent role requests must be approved in **User Accounts**.
+way; subsequent role requests must be approved in **User Accounts**. If shell
+access is unavailable, use the protected one-time web setup described below.
 
 Users can register at `/register`, choose the role they are requesting, and
 provide their own credentials. Registration requests are rate limited, and
@@ -201,10 +202,25 @@ For Render, create a Docker web service and set `APP_ENV=production`,
 `APP_DEBUG=false`, `APP_KEY` (a generated key), and `APP_URL` (the public
 service URL). Attach a persistent disk mounted at `/var/data`, then set
 `DB_DATABASE=/var/data/database.sqlite`. The container runs migrations and
-seeds RBAC on startup; use the Render Shell to run
-`php artisan rbac:bootstrap-admin` once. Without persistent storage, SQLite
-data can be lost when the service is replaced. Use a single running instance
-for this SQLite demonstration deployment.
+seeds RBAC on startup.
+
+To create the first IT Manager without Render Shell access:
+
+1. Generate a long random setup code locally, for example with
+   `php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"`.
+2. Add it as the `INITIAL_ADMIN_SETUP_KEY` environment variable in Render.
+3. Open `https://your-service.onrender.com/initial-admin`, enter that setup
+   code, and create the administrator account. If you already registered with
+   that email, the setup activates that pending account and sets the password
+   you provide here.
+4. Remove `INITIAL_ADMIN_SETUP_KEY` from Render as soon as setup succeeds.
+
+This page is available only while the secret is configured and before an
+initial administrator has been assigned. The setup code is rate limited and
+is not stored in the account. The successful setup is recorded in the audit
+log, which permanently closes the web setup page for that database. Without
+persistent storage, SQLite data can be lost when the service is replaced. Use
+a single running instance for this SQLite demonstration deployment.
 
 RBAC tests are run with:
 

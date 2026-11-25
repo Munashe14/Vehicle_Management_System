@@ -14,6 +14,7 @@ use App\Http\Controllers\AuditLogController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\ReportController;
 use App\Http\Controllers\VehicleReportController;
+use App\Http\Controllers\InitialAdminController;
 
 /*
 |--------------------------------------------------------------------------
@@ -30,6 +31,8 @@ Route::get('/login', [AuthController::class, 'showLogin'])->middleware('guest')-
 Route::post('/login', [AuthController::class, 'login'])->middleware(['guest', 'throttle:5,1'])->name('login.submit');
 Route::get('/register', [AuthController::class, 'showRegistration'])->middleware('guest')->name('register');
 Route::post('/register', [AuthController::class, 'register'])->middleware(['guest', 'throttle:5,1'])->name('register.submit');
+Route::get('/initial-admin', [InitialAdminController::class, 'show'])->middleware('guest')->name('initial-admin');
+Route::post('/initial-admin', [InitialAdminController::class, 'store'])->middleware(['guest', 'throttle:5,1'])->name('initial-admin.submit');
 
 Route::middleware(['auth', 'active'])->group(function () {
     Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
