@@ -47,11 +47,11 @@ class RbacSeeder extends Seeder
             'users.create' => 'Create user accounts',
             'users.update' => 'Update user accounts and roles',
             'users.deactivate' => 'Deactivate user accounts',
-            'users.approve' => 'Approve or reject registration requests',
             'audit.view' => 'View security audit logs',
         ];
 
         Permission::where('name', 'roles.manage')->delete();
+        Permission::where('name', 'users.approve')->delete();
 
         foreach ($permissions as $name => $label) {
             Permission::updateOrCreate(['name' => $name], ['label' => $label]);

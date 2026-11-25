@@ -39,7 +39,7 @@
                 <span class="auth-card-icon" aria-hidden="true">＋</span>
                 <span class="auth-eyebrow">GET STARTED</span>
                 <h2 id="auth-title">Create your account</h2>
-                <p>Choose your role request. An IT Manager must approve it before you can sign in.</p>
+                <p>Select your role and create your account. You can sign in as soon as registration is complete.</p>
             </div>
 
             @if ($errors->any())
@@ -59,11 +59,11 @@
                     <input id="email" type="email" name="email" value="{{ old('email') }}" placeholder="you@company.com" required autocomplete="email" maxlength="255">
                 </div>
                 <div class="auth-field">
-                    <label for="requested_role_id">Role you are requesting</label>
-                    <select id="requested_role_id" name="requested_role_id" required>
+                    <label for="role_id">Your role</label>
+                    <select id="role_id" name="role_id" required>
                         <option value="">Select a role</option>
                         @foreach ($roles as $role)
-                            <option value="{{ $role->id }}" {{ old('requested_role_id') == $role->id ? 'selected' : '' }}>{{ $role->label }}</option>
+                            <option value="{{ $role->id }}" {{ old('role_id') == $role->id ? 'selected' : '' }}>{{ $role->label }}</option>
                         @endforeach
                     </select>
                 </div>
@@ -85,12 +85,12 @@
                     <label for="password_confirmation">Confirm password</label>
                     <input id="password_confirmation" type="password" name="password_confirmation" placeholder="Enter your password again" required autocomplete="new-password" minlength="12" maxlength="72">
                 </div>
-                <div class="auth-role-note"><span aria-hidden="true">✓</span><span><strong>Access is reviewed</strong><small>Your account stays inactive until an IT Manager verifies and approves your requested role.</small></span></div>
-                <button class="auth-submit" type="submit">Submit registration request <span aria-hidden="true">→</span></button>
+                <div class="auth-role-note"><span aria-hidden="true">✓</span><span><strong>Ready to get started</strong><small>Your account will be active immediately with the role you selected.</small></span></div>
+                <button class="auth-submit" type="submit">Create account <span aria-hidden="true">→</span></button>
             </form>
 
             <div class="auth-card-footer">
-                <span>Already have an approved account?</span>
+                <span>Already have an account?</span>
                 <a href="{{ route('login') }}">Sign in</a>
             </div>
             <p class="auth-security-note"><span aria-hidden="true">◇</span> Your password is stored securely and never shared.</p>

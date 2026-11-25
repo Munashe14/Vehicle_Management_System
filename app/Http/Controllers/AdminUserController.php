@@ -17,15 +17,12 @@ class AdminUserController extends Controller
         $this->middleware('permission:users.create')->only(['create', 'store']);
         $this->middleware('permission:users.update')->only(['edit', 'update', 'editPassword', 'updatePassword']);
         $this->middleware('permission:users.deactivate')->only('deactivate');
-        $this->middleware('permission:users.approve')->only(['approve', 'reject']);
     }
 
     public function index()
     {
-        $users = User::with(['role', 'requestedRole'])->orderByRaw("CASE WHEN registration_status = 'pending' THEN 0 ELSE 1 END")
-            ->orderBy('name')->paginate(25);
-        $pendingCount = User::where('registration_status', 'pending')->count();
-        return view('users.index', compact('users', 'pendingCount'));
+        $users = User::with('role')->orderBy('name')->paginate(25);
+        return view('users.index', compact('users'));
     }
 
     public function create()
@@ -127,52 +124,6 @@ class AdminUserController extends Controller
         });
 
         return redirect('/users')->with('success', 'User account deactivated.');
-    }
-
-    public function approve(User $user)
-    {
-        DB::transaction(function () use ($user) {
-            $user = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
-            abort_unless(
-                in_array($user->registration_status, ['pending', 'approved'], true)
-                    && !$user->is_active
-                    && !$user->role_id
-                    && $user->requested_role_id,
-                404
-            );
-
-            $requestedRole = Role::findOrFail($user->requested_role_id);
-            $user->role_id = $requestedRole->id;
-            $user->requested_role_id = null;
-            $user->registration_status = 'approved';
-            $user->is_active = true;
-            $user->save();
-
-            $this->recordAudit('user.registration_approved', $user, [
-                'assigned_role' => $requestedRole->name,
-            ]);
-        });
-
-        return redirect('/users')->with('success', 'Registration approved and requested role assigned.');
-    }
-
-    public function reject(User $user)
-    {
-        DB::transaction(function () use ($user) {
-            $user = User::whereKey($user->id)->lockForUpdate()->firstOrFail();
-            abort_unless($user->registration_status === 'pending', 404);
-
-            $requestedRole = $user->requestedRole->name ?? null;
-            $user->registration_status = 'rejected';
-            $user->is_active = false;
-            $user->save();
-
-            $this->recordAudit('user.registration_rejected', $user, [
-                'requested_role' => $requestedRole,
-            ]);
-        });
-
-        return redirect('/users')->with('success', 'Registration request rejected.');
     }
 
     private function ensureAnotherActiveAdminExists(User $user): void

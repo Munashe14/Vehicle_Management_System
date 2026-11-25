@@ -46,7 +46,7 @@ class AuthController extends Controller
             'email' => 'required|email|max:255|unique:users,email',
             'phone' => 'nullable|string|max:50',
             'license_number' => 'nullable|string|max:100|unique:users,license_number',
-            'requested_role_id' => [
+            'role_id' => [
                 'required',
                 'integer',
                 Rule::in(Role::whereIn('name', [
@@ -60,33 +60,32 @@ class AuthController extends Controller
             'password' => 'required|string|min:12|max:72|confirmed',
         ]);
 
-        $requestedRole = Role::findOrFail($data['requested_role_id']);
-        DB::transaction(function () use ($data, $requestedRole, $request) {
+        $role = Role::findOrFail($data['role_id']);
+        DB::transaction(function () use ($data, $role, $request) {
             $user = User::create([
                 'name' => $data['name'],
                 'email' => $data['email'],
                 'phone' => $data['phone'] ?? null,
                 'license_number' => $data['license_number'] ?? null,
                 'password' => Hash::make($data['password']),
-                'requested_role_id' => $requestedRole->id,
-                'registration_status' => 'pending',
-                'is_active' => false,
+                'role_id' => $role->id,
+                'registration_status' => 'approved',
+                'is_active' => true,
             ]);
 
             AuditLog::create([
                 'user_id' => $user->id,
-                'action' => 'user.registration_requested',
+                'action' => 'user.self_registered',
                 'subject_type' => User::class,
                 'subject_id' => $user->id,
-                'details' => ['requested_role' => $requestedRole->name],
+                'details' => ['role' => $role->name],
                 'ip_address' => $request->ip(),
             ]);
-
         });
 
         return redirect()->route('login')->with(
             'success',
-            'Your registration request has been submitted. You can sign in after an IT Manager approves your account and requested role.'
+            'Your account has been created. You can now sign in.'
         );
     }
 
@@ -111,24 +110,33 @@ class AuthController extends Controller
         $account = User::where('email', $request->input('email'))->first();
 
         if ($account && Hash::check($request->input('password'), $account->password)) {
-            if ($account->registration_status === 'pending') {
-                RateLimiter::clear($key);
-                return back()->withErrors([
-                    'email' => 'Your registration request is awaiting IT Manager approval.',
-                ])->onlyInput('email');
-            }
+            if (!$account->is_active
+                && !$account->role_id
+                && $account->requested_role_id
+                && in_array($account->registration_status, ['pending', 'approved'], true)) {
+                $legacyRole = Role::find($account->requested_role_id);
+                if ($legacyRole) {
+                    $account->role_id = $legacyRole->id;
+                    $account->requested_role_id = null;
+                    $account->registration_status = 'approved';
+                    $account->is_active = true;
+                    $account->save();
 
-            if ($account->registration_status === 'rejected') {
-                RateLimiter::clear($key);
-                return back()->withErrors([
-                    'email' => 'Your registration request was not approved. Contact the IT Manager for assistance.',
-                ])->onlyInput('email');
+                    AuditLog::create([
+                        'user_id' => $account->id,
+                        'action' => 'user.registration_activated',
+                        'subject_type' => User::class,
+                        'subject_id' => $account->id,
+                        'details' => ['role' => $legacyRole->name],
+                        'ip_address' => $request->ip(),
+                    ]);
+                }
             }
 
             if (!$account->is_active || !$account->role_id) {
                 RateLimiter::clear($key);
                 return back()->withErrors([
-                    'email' => 'Your account needs administrator setup before you can sign in. Contact the IT Manager.',
+                    'email' => 'This account is inactive or has no role assigned. Contact a system administrator.',
                 ])->onlyInput('email');
             }
         }

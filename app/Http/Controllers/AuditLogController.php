@@ -24,6 +24,8 @@ class AuditLogController extends Controller
             'user.updated' => 'User updated',
             'user.deactivated' => 'User deactivated',
             'user.password_reset' => 'User password reset',
+            'user.self_registered' => 'Account registered',
+            'user.registration_activated' => 'Legacy account activated',
             'user.registration_requested' => 'Registration requested',
             'user.registration_approved' => 'Registration approved',
             'user.registration_rejected' => 'Registration rejected',

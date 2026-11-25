@@ -29,86 +29,12 @@ class RbacAccessTest extends TestCase
         $this->get('/vehicles')->assertRedirect('/login');
     }
 
-    public function test_web_initial_admin_setup_is_secret_protected_and_one_time()
+    public function test_one_time_admin_setup_and_approval_routes_are_removed()
     {
-        config(['app.initial_admin_setup_key' => 'secure-bootstrap-code-for-demo']);
-
-        $this->get('/initial-admin')
-            ->assertOk()
-            ->assertSee('Create IT Manager account');
-
-        $this->post('/initial-admin', [
-            'setup_key' => 'incorrect-code',
-            'name' => 'Initial Manager',
-            'email' => 'manager@example.test',
-            'password' => 'Strong-Manager-Password-123',
-            'password_confirmation' => 'Strong-Manager-Password-123',
-        ])->assertSessionHasErrors('setup_key')
-            ->assertSessionMissing('_old_input.setup_key');
-        $this->assertDatabaseMissing('users', ['email' => 'manager@example.test']);
-
-        $this->post('/initial-admin', [
-            'setup_key' => 'secure-bootstrap-code-for-demo',
-            'name' => 'Initial Manager',
-            'email' => 'manager@example.test',
-            'password' => 'Strong-Manager-Password-123',
-            'password_confirmation' => 'Strong-Manager-Password-123',
-        ])->assertRedirect('/login');
-
-        $admin = User::where('email', 'manager@example.test')->firstOrFail();
-        $this->assertTrue($admin->is_active);
-        $this->assertSame('it_manager', $admin->role->name);
-        $this->assertSame('approved', $admin->registration_status);
-        $this->assertDatabaseHas('audit_logs', [
-            'user_id' => $admin->id,
-            'action' => 'user.initial_admin_assigned',
-            'subject_id' => $admin->id,
-        ]);
-
         $this->get('/initial-admin')->assertNotFound();
-        $this->post('/initial-admin', [
-            'setup_key' => 'secure-bootstrap-code-for-demo',
-            'name' => 'Another Manager',
-            'email' => 'another-manager@example.test',
-            'password' => 'Strong-Manager-Password-123',
-            'password_confirmation' => 'Strong-Manager-Password-123',
-        ])->assertNotFound();
-    }
-
-    public function test_web_initial_admin_setup_is_disabled_without_deployment_secret()
-    {
-        config(['app.initial_admin_setup_key' => null]);
-
-        $this->get('/initial-admin')->assertNotFound();
-        $this->assertDatabaseCount('users', 0);
-    }
-
-    public function test_web_initial_admin_setup_can_promote_an_existing_pending_account()
-    {
-        config(['app.initial_admin_setup_key' => 'secure-bootstrap-code-for-demo']);
-        $pending = User::create([
-            'name' => 'Pending User',
-            'email' => 'manager@example.test',
-            'password' => Hash::make('Old-Manager-Password-123'),
-            'requested_role_id' => Role::where('name', 'driver')->value('id'),
-            'registration_status' => 'pending',
-            'is_active' => false,
-        ]);
-
-        $this->post('/initial-admin', [
-            'setup_key' => 'secure-bootstrap-code-for-demo',
-            'name' => 'Initial Manager',
-            'email' => 'manager@example.test',
-            'password' => 'Strong-Manager-Password-123',
-            'password_confirmation' => 'Strong-Manager-Password-123',
-        ])->assertRedirect('/login');
-
-        $pending->refresh();
-        $this->assertSame('Initial Manager', $pending->name);
-        $this->assertTrue($pending->is_active);
-        $this->assertSame('it_manager', $pending->role->name);
-        $this->assertNull($pending->requested_role_id);
-        $this->assertTrue(Hash::check('Strong-Manager-Password-123', $pending->password));
+        $this->post('/initial-admin')->assertNotFound();
+        $this->patch('/users/1/approve')->assertNotFound();
+        $this->patch('/users/1/reject')->assertNotFound();
     }
 
     public function test_audit_log_displays_readable_actions_and_formatted_details()
@@ -184,111 +110,84 @@ class RbacAccessTest extends TestCase
         }
     }
 
-    public function test_registration_requests_a_role_and_requires_it_manager_approval_before_login()
+    public function test_registration_immediately_activates_the_account_with_the_selected_role()
     {
-        $admin = $this->userWithRole('it_manager');
         $financeRole = Role::where('name', 'finance_manager')->firstOrFail();
         $itRole = Role::where('name', 'it_manager')->firstOrFail();
-        $this->post('/logout')->assertRedirect(route('login'));
-        $this->get('/register')->assertOk()->assertSee('Create your account')->assertSee('name="requested_role_id"', false);
+        $this->get('/register')->assertOk()
+            ->assertSee('Create your account')
+            ->assertSee('name="role_id"', false)
+            ->assertSee('Your account will be active immediately');
 
         $this->post('/register', [
             'name' => 'New Finance Manager',
             'email' => '  DRIVER@EXAMPLE.TEST ',
             'phone' => '0770000000',
             'license_number' => 'DL-7788',
-            'requested_role_id' => $financeRole->id,
+            'role_id' => $financeRole->id,
             'password' => 'Strong-Driver-Password-123',
             'password_confirmation' => 'Strong-Driver-Password-123',
-            'role_id' => $itRole->id,
+            'requested_role_id' => $itRole->id,
         ])->assertRedirect(route('login'));
 
         $user = User::where('email', 'driver@example.test')->firstOrFail();
         $this->assertGuest();
-        $this->assertFalse($user->is_active);
-        $this->assertNull($user->role_id);
-        $this->assertSame($financeRole->id, $user->requested_role_id);
-        $this->assertSame('pending', $user->registration_status);
+        $this->assertTrue($user->is_active);
+        $this->assertSame($financeRole->id, $user->role_id);
+        $this->assertNull($user->requested_role_id);
+        $this->assertSame('approved', $user->registration_status);
         $this->assertFalse($user->hasPermission('users.create'));
         $this->assertTrue(Hash::check('Strong-Driver-Password-123', $user->password));
         $this->assertDatabaseHas('audit_logs', [
             'user_id' => $user->id,
-            'action' => 'user.registration_requested',
+            'action' => 'user.self_registered',
             'subject_id' => $user->id,
         ]);
 
-        $this->from('/login')->post('/login', [
-            'email' => $user->email,
-            'password' => 'Strong-Driver-Password-123',
-        ])->assertSessionHasErrors([
-            'email' => 'Your registration request is awaiting IT Manager approval.',
-        ]);
-        $this->assertGuest();
-
-        $this->actingAs($admin)->get('/users')->assertOk()->assertSee('Finance Manager');
-        $this->actingAs($admin)->patch('/users/'.$user->id.'/approve')->assertRedirect('/users');
-
-        $user->refresh();
-        $this->assertTrue($user->is_active);
-        $this->assertTrue($user->isRole('finance_manager'));
-        $this->assertSame('approved', $user->registration_status);
-        $this->assertNull($user->requested_role_id);
-        $this->assertDatabaseHas('audit_logs', [
-            'user_id' => $admin->id,
-            'action' => 'user.registration_approved',
-            'subject_id' => $user->id,
-        ]);
-
-        $this->post('/logout')->assertRedirect(route('login'));
         $this->post('/login', [
             'email' => $user->email,
             'password' => 'Strong-Driver-Password-123',
         ])->assertRedirect(route('home'));
         $this->assertAuthenticatedAs($user);
         $this->get('/')->assertRedirect('/reports/financial');
+
+        $this->post('/logout')->assertRedirect(route('login'));
+        $this->post('/register', [
+            'name' => 'Initial Manager',
+            'email' => 'initial-manager@example.test',
+            'role_id' => $itRole->id,
+            'password' => 'Strong-Manager-Password-123',
+            'password_confirmation' => 'Strong-Manager-Password-123',
+        ])->assertRedirect(route('login'));
+
+        $admin = User::where('email', 'initial-manager@example.test')->firstOrFail();
+        $this->assertTrue($admin->is_active);
+        $this->assertTrue($admin->isRole('it_manager'));
+        $this->assertFalse($admin->hasPermission('users.approve'));
+        $this->assertTrue($admin->hasPermission('users.create'));
     }
 
-    public function test_only_it_managers_can_approve_registration_requests()
+    public function test_legacy_pending_registration_can_sign_in_with_its_requested_role()
     {
-        $requester = User::create([
+        $user = User::create([
             'name' => 'Pending Supervisor',
-            'email' => 'pending-supervisor@example.test',
+            'email' => 'legacy-supervisor@example.test',
             'password' => Hash::make('Correct-Horse-Battery-1'),
             'requested_role_id' => Role::where('name', 'fleet_supervisor')->value('id'),
             'registration_status' => 'pending',
             'is_active' => false,
         ]);
-        $supervisor = $this->userWithRole('fleet_supervisor');
 
-        $this->actingAs($supervisor)->patch('/users/'.$requester->id.'/approve')->assertForbidden();
-        $this->assertDatabaseHas('users', [
-            'id' => $requester->id,
-            'is_active' => false,
-            'registration_status' => 'pending',
-        ]);
-    }
+        $this->post('/login', [
+            'email' => $user->email,
+            'password' => 'Correct-Horse-Battery-1',
+        ])->assertRedirect(route('home'));
 
-    public function test_it_manager_can_reconcile_an_approved_but_unassigned_registration()
-    {
-        $admin = $this->userWithRole('it_manager');
-        $requestedRole = Role::where('name', 'finance_manager')->firstOrFail();
-        $applicant = User::create([
-            'name' => 'Finance Applicant',
-            'email' => 'finance-applicant@example.test',
-            'password' => Hash::make('Correct-Horse-Battery-1'),
-            'requested_role_id' => $requestedRole->id,
-            'registration_status' => 'approved',
-            'is_active' => false,
-        ]);
-
-        $this->actingAs($admin)->get('/users')->assertOk()->assertSee('Needs role approval');
-        $this->actingAs($admin)->patch('/users/'.$applicant->id.'/approve')->assertRedirect('/users');
-
-        $applicant->refresh();
-        $this->assertTrue($applicant->is_active);
-        $this->assertTrue($applicant->isRole('finance_manager'));
-        $this->assertSame('approved', $applicant->registration_status);
-        $this->assertNull($applicant->requested_role_id);
+        $user->refresh();
+        $this->assertTrue($user->is_active);
+        $this->assertTrue($user->isRole('fleet_supervisor'));
+        $this->assertNull($user->requested_role_id);
+        $this->assertSame('approved', $user->registration_status);
     }
 
     public function test_registration_rejects_duplicate_driver_license_numbers()

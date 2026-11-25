@@ -109,43 +109,39 @@ run the following from the project directory:
 ```powershell
 New-Item -ItemType File -Path database\database.sqlite -Force
 php artisan migrate --seed
-php artisan rbac:bootstrap-admin
 php artisan serve
 ```
 
-The initial-admin command prompts for a name, email and a password of at least
-12 characters. It does not contain a preset credential. To promote an existing
-account as the first IT Manager, run
-`php artisan rbac:bootstrap-admin user@example.com` and confirm the prompt.
-This can also activate an already registered, inactive request when there is no
-active IT Manager. Only the first active IT Manager can be bootstrapped this
-way; subsequent role requests must be approved in **User Accounts**. If shell
-access is unavailable, use the protected one-time web setup described below.
+Users can register at `/register`, choose one of the five roles, and sign in
+immediately. Registration is rate limited, passwords must be at least 12
+characters, and passwords are hashed. The selected role is assigned to the
+account at registration; no administrator approval is required.
 
-Users can register at `/register`, choose the role they are requesting, and
-provide their own credentials. Registration requests are rate limited, and
-passwords must be at least 12 characters and are hashed. New registrations are
-created inactive and cannot sign in until an IT Manager approves or rejects the
-request from **User Accounts**. Approval activates the account and assigns its
-requested role; applicants cannot give themselves permissions. The IT Manager
-can also choose another role when creating or editing an account.
+This direct role selection is intended only for the lecturer demonstration:
+anyone who can reach the public registration page can select IT Manager and
+receive administrator permissions. Do not use this configuration for a
+production system with real users or sensitive data. For production, restore
+administrator-controlled role assignment and approval before deployment.
 
-All five approved roles use the same `/login` page with their own credentials.
-Pending and deactivated accounts cannot sign in. After credentials are verified,
-the system loads the account's assigned role and redirects to its workspace:
+All five roles use the same `/login` page with their own credentials.
+Deactivated accounts cannot sign in. After credentials are verified, the
+system loads the account's assigned role and redirects to its workspace:
 IT Manager → user accounts, Fleet Supervisor → vehicles, Drivers → trips,
-Finance Manager → financial report, and General Manager → fleet report. Create
-accounts or review requests in **User Accounts**; never share one account
-between people. Use `php artisan db:seed` to ensure the role list and
-permissions are present.
+Finance Manager → financial report, and General Manager → fleet report. Use
+`php artisan db:seed` to ensure the role list and permissions are present.
+
+If you prefer to create an initial IT Manager from a trusted local shell,
+`php artisan rbac:bootstrap-admin` remains available and prompts for the
+account name, email and password.
 
 The RBAC roles are **IT Manager**, **Fleet Supervisor**, **Driver**, **Finance
 Manager**, and **General Manager**. Permissions are stored in the `permissions`
 and `permission_role` tables and are explicitly seeded by `RbacSeeder`. Rerun
 `php artisan db:seed` after changing the role-permission mapping in that seeder.
-Role assignment and account deactivation are managed through the IT Manager's
-User Accounts screen. Security and operational changes are recorded in
-`audit_logs`; denied authorization requests are logged as well.
+IT Managers can edit and deactivate accounts through the User Accounts screen.
+For this presentation build, role selection is also available on public
+registration. Security and operational changes are recorded in `audit_logs`;
+denied authorization requests are logged as well.
 
 | Role | Access summary |
 |---|---|
@@ -192,35 +188,19 @@ docker run --name vfms -p 8000:8080 -e APP_ENV=production -e APP_DEBUG=false -e 
 Generate a unique key with `php artisan key:generate --show` and replace the
 placeholder before starting the container. Keep the same key across restarts.
 The named Docker volume stores SQLite data outside the image. After startup,
-create the initial administrator interactively:
-
-```powershell
-docker exec -it vfms php artisan rbac:bootstrap-admin
-```
+register an account and select **IT Manager / System Administrator** to access
+the administrative screens.
 
 For Render, create a Docker web service and set `APP_ENV=production`,
 `APP_DEBUG=false`, `APP_KEY` (a generated key), and `APP_URL` (the public
 service URL). Attach a persistent disk mounted at `/var/data`, then set
 `DB_DATABASE=/var/data/database.sqlite`. The container runs migrations and
-seeds RBAC on startup.
-
-To create the first IT Manager without Render Shell access:
-
-1. Generate a long random setup code locally, for example with
-   `php -r "echo bin2hex(random_bytes(32)), PHP_EOL;"`.
-2. Add it as the `INITIAL_ADMIN_SETUP_KEY` environment variable in Render.
-3. Open `https://your-service.onrender.com/initial-admin`, enter that setup
-   code, and create the administrator account. If you already registered with
-   that email, the setup activates that pending account and sets the password
-   you provide here.
-4. Remove `INITIAL_ADMIN_SETUP_KEY` from Render as soon as setup succeeds.
-
-This page is available only while the secret is configured and before an
-initial administrator has been assigned. The setup code is rate limited and
-is not stored in the account. The successful setup is recorded in the audit
-log, which permanently closes the web setup page for that database. Without
-persistent storage, SQLite data can be lost when the service is replaced. Use
-a single running instance for this SQLite demonstration deployment.
+seeds RBAC roles/permissions on startup. Register an account and select IT
+Manager to use the administrative screens. This direct role selection is for
+demonstration only; do not expose this deployment as a production system.
+Without persistent storage, SQLite data can be lost when the service is
+replaced. Use a single running instance for this SQLite demonstration
+deployment.
 
 RBAC tests are run with:
 
